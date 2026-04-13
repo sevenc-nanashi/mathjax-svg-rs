@@ -1,0 +1,10 @@
+[package]
+name = "mathjax-svg-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quickjs-rusty = "0.11.1"
+
+[dev-dependencies]
+resvg = "0.47.0"

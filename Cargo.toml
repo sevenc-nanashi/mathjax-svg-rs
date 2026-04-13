@@ -2,6 +2,7 @@
 name = "mathjax-svg-rs"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/sevenc-nanashi/mathjax-svg-rs"
 
 [dependencies]
 include-zstd = "0.1.0"

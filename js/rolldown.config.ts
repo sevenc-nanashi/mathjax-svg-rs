@@ -1,4 +1,6 @@
 import { defineConfig } from "rolldown";
+import license from "rollup-plugin-license";
+
 export default defineConfig({
   input: "./src/index.ts",
   output: {
@@ -9,4 +11,11 @@ export default defineConfig({
       punycode: "punycode/punycode.js",
     },
   },
+  plugins: [
+    license({
+      thirdParty: {
+        output: "dist/NOTICE.txt",
+      },
+    }),
+  ],
 });

@@ -112,6 +112,9 @@ pub fn render_tex(tex: &str) -> Result<String, String> {
     RUNTIME.with(|runtime| runtime.borrow().render_tex(tex))
 }
 
+/// Information about the license used by this crate.
+pub const NOTICE: &str = include_str!("../js/dist/NOTICE.txt");
+
 #[cfg(test)]
 mod tests {
     use super::*;

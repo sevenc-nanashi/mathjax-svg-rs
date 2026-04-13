@@ -1,4 +1,7 @@
 fn main() {
+    unsafe { std::env::set_var("RUST_LOG", "info") };
+    env_logger::init();
+
     if std::env::args().len() < 2 {
         eprintln!("Usage: render_arg <TeX string> <png output file>");
         std::process::exit(1);

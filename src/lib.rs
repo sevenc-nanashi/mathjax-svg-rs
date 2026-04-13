@@ -7,18 +7,82 @@ struct Runtime {
     runtime: quickjs_rusty::Context,
 }
 
+struct LogConsoleHandler;
+impl quickjs_rusty::console::ConsoleBackend for LogConsoleHandler {
+    fn log(&self, level: quickjs_rusty::console::Level, values: Vec<quickjs_rusty::OwnedJsValue>) {
+        match level {
+            quickjs_rusty::console::Level::Log => log::info!(
+                "{}",
+                values
+                    .iter()
+                    .map(format_value)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            quickjs_rusty::console::Level::Trace => log::trace!(
+                "{}",
+                values
+                    .iter()
+                    .map(format_value)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            quickjs_rusty::console::Level::Debug => log::debug!(
+                "{}",
+                values
+                    .iter()
+                    .map(format_value)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            quickjs_rusty::console::Level::Info => log::info!(
+                "{}",
+                values
+                    .iter()
+                    .map(format_value)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            quickjs_rusty::console::Level::Warn => log::warn!(
+                "{}",
+                values
+                    .iter()
+                    .map(format_value)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            quickjs_rusty::console::Level::Error => log::error!(
+                "{}",
+                values
+                    .iter()
+                    .map(format_value)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+        }
+    }
+}
+
+fn format_value(value: &quickjs_rusty::OwnedJsValue) -> String {
+    if let Ok(s) = value.to_string() {
+        s
+    } else {
+        format!("{:?}", value)
+    }
+}
+
 impl Runtime {
     fn new() -> Self {
-        let context = quickjs_rusty::Context::new(None).expect("Failed to create QuickJS context");
+        let context = quickjs_rusty::Context::builder()
+            .console(LogConsoleHandler)
+            .build()
+            .expect("Failed to create QuickJS context");
         context
-            .eval(include_str!("../js/dist/index.js"), false)
+            .eval(include_zstd::file_str!("../js/dist/index.js"), false)
             .map_err(|e| match e {
                 quickjs_rusty::ExecutionError::Exception(exception) => {
                     if exception.is_string() {
-                        format!(
-                            "JavaScript exception: {}",
-                            exception.to_string().unwrap()
-                        )
+                        format!("JavaScript exception: {}", exception.to_string().unwrap())
                     } else {
                         format!("JavaScript exception: {:?}", exception)
                     }

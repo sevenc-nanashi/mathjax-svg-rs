@@ -52,9 +52,14 @@ const mathJax = mathjax.document("", {
   OutputJax: svg,
 });
 
-function renderTeX(math: string): string {
+function renderTeX(math: string, fontSize: number): string {
+  if (typeof fontSize !== "number" || !Number.isFinite(fontSize) || fontSize <= 0) {
+    throw new Error(`Font size must be positive and finite: ${fontSize}`);
+  }
+
   const mathItem: LiteElement = mathJax.convert(math, {
     display: true,
+    em: fontSize,
   });
   return adaptor.innerHTML(mathItem);
 }

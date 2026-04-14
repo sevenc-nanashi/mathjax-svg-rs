@@ -2,6 +2,14 @@
 //!
 //! Very thin wrapper around MathJax to render TeX to SVG, using QuickJS-ng as the JavaScript
 //! engine.
+//!
+//! # Notes
+//!
+//! - The SVG rendered use `ex` as width and height, so the actual size will depend on the
+//!   font size used when rendering.
+//! - The `render_tex` initializes the JavaScript runtime on the first call for each thread, thus
+//!   you might want to create a dedicated thread for rendering if you are developing a
+//!   multi-threaded application.
 
 use std::str::FromStr;
 
@@ -54,7 +62,7 @@ impl Runtime {
         Self { runtime: context }
     }
 
-    fn render_tex(&mut self, tex: &str) -> Result<String, String> {
+    fn render_tex(&mut self, tex: &str, font_size: f64) -> Result<String, String> {
         let result = self
             .runtime
             .global_object()
@@ -67,11 +75,12 @@ impl Runtime {
             .expect("Render function is not an object")
             .call(
                 &boa_engine::JsValue::null(),
-                &[boa_engine::JsValue::new(
-                    boa_engine::JsString::from_str(tex).map_err(|e| {
+                &[
+                    boa_engine::JsValue::new(boa_engine::JsString::from_str(tex).map_err(|e| {
                         format!("Failed to convert TeX to JavaScript string: {}", e)
-                    })?,
-                )],
+                    })?),
+                    boa_engine::JsValue::new(font_size),
+                ],
                 &mut self.runtime,
             )
             .map_err(|e| format!("Failed to call render function: {}", e))?;
@@ -83,14 +92,29 @@ impl Runtime {
     }
 }
 
+/// Default font size in pixels.
+pub const DEFAULT_FONT_SIZE: f64 = 16.0;
+
 /// Renders TeX to SVG.
 pub fn render_tex(tex: &str) -> Result<String, String> {
+    render_tex_with_font_size(tex, DEFAULT_FONT_SIZE)
+}
+
+/// Renders TeX to SVG with a font size in pixels.
+pub fn render_tex_with_font_size(tex: &str, font_size: f64) -> Result<String, String> {
+    if !font_size.is_finite() || font_size <= 0.0 {
+        return Err(format!(
+            "Font size must be positive and finite: {}",
+            font_size
+        ));
+    }
+
     thread_local! {
         static RUNTIME: std::sync::Mutex<Runtime> = std::sync::Mutex::new(Runtime::new());
     }
     RUNTIME.with(|runtime| {
         let mut runtime = runtime.lock().unwrap();
-        runtime.render_tex(tex)
+        runtime.render_tex(tex, font_size)
     })
 }
 
@@ -107,5 +131,21 @@ mod tests {
         let svg = render_tex(tex).expect("Failed to render TeX");
         assert!(svg.contains("<svg"));
         assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn test_render_tex_with_font_size() {
+        let tex = r"\frac{a}{b}";
+        let default_svg = render_tex(tex).expect("Failed to render TeX");
+        let svg = render_tex_with_font_size(tex, 32.0).expect("Failed to render TeX");
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("</svg>"));
+        assert_ne!(default_svg, svg);
+    }
+
+    #[test]
+    fn test_render_tex_with_invalid_font_size() {
+        let error = render_tex_with_font_size(r"x", 0.0).expect_err("Expected an error");
+        assert!(error.contains("Font size must be positive and finite"));
     }
 }

@@ -3,113 +3,95 @@
 //! Very thin wrapper around MathJax to render TeX to SVG, using QuickJS-ng as the JavaScript
 //! engine.
 
+use std::str::FromStr;
+
 struct Runtime {
-    runtime: quickjs_rusty::Context,
-}
-
-struct LogConsoleHandler;
-impl quickjs_rusty::console::ConsoleBackend for LogConsoleHandler {
-    fn log(&self, level: quickjs_rusty::console::Level, values: Vec<quickjs_rusty::OwnedJsValue>) {
-        match level {
-            quickjs_rusty::console::Level::Log => log::info!(
-                "{}",
-                values
-                    .iter()
-                    .map(format_value)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-            quickjs_rusty::console::Level::Trace => log::trace!(
-                "{}",
-                values
-                    .iter()
-                    .map(format_value)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-            quickjs_rusty::console::Level::Debug => log::debug!(
-                "{}",
-                values
-                    .iter()
-                    .map(format_value)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-            quickjs_rusty::console::Level::Info => log::info!(
-                "{}",
-                values
-                    .iter()
-                    .map(format_value)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-            quickjs_rusty::console::Level::Warn => log::warn!(
-                "{}",
-                values
-                    .iter()
-                    .map(format_value)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-            quickjs_rusty::console::Level::Error => log::error!(
-                "{}",
-                values
-                    .iter()
-                    .map(format_value)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-        }
-    }
-}
-
-fn format_value(value: &quickjs_rusty::OwnedJsValue) -> String {
-    if let Ok(s) = value.to_string() {
-        s
-    } else {
-        format!("{:?}", value)
-    }
+    runtime: boa_engine::Context,
 }
 
 impl Runtime {
     fn new() -> Self {
-        let context = quickjs_rusty::Context::builder()
-            .console(LogConsoleHandler)
+        let mut context = boa_engine::Context::builder()
             .build()
-            .expect("Failed to create QuickJS context");
+            .expect("Failed to create JavaScript context");
         context
-            .eval(include_zstd::file_str!("../js/dist/index.js"), false)
-            .map_err(|e| match e {
-                quickjs_rusty::ExecutionError::Exception(exception) => {
-                    if exception.is_string() {
-                        format!("JavaScript exception: {}", exception.to_string().unwrap())
-                    } else {
-                        format!("JavaScript exception: {:?}", exception)
+            .eval(boa_engine::Source::from_bytes(include_zstd::file_str!(
+                "../js/dist/index.js"
+            )))
+            .expect("Failed to evaluate MathJax script");
+        let log = boa_engine::object::FunctionObjectBuilder::new(
+            context.realm(),
+            boa_engine::NativeFunction::from_fn_ptr(|_this, args, ctx| {
+                let message = args
+                    .get(1)
+                    .and_then(|v| v.to_string(ctx).ok())
+                    .and_then(|s| s.to_std_string().ok())
+                    .unwrap_or_else(|| "Unknown log message".into());
+                let level = args.first().and_then(|v| v.to_u32(ctx).ok()).unwrap_or(2);
+                match level {
+                    0 => log::trace!("{}", message),
+                    1 => log::debug!("{}", message),
+                    2 => log::info!("{}", message),
+                    3 => log::warn!("{}", message),
+                    4 => log::error!("{}", message),
+                    _ => {
+                        log::warn!("Unknown log level {}: {}", level, message);
                     }
                 }
-                other => format!("Failed to evaluate script: {:?}", other),
-            })
-            .expect("Failed to evaluate MathJax script");
+                Ok(boa_engine::JsValue::undefined())
+            }),
+        )
+        .build();
+        context
+            .global_object()
+            .set(
+                boa_engine::property::PropertyKey::String("__host_log".into()),
+                log,
+                false,
+                &mut context,
+            )
+            .expect("Failed to set log function");
         Self { runtime: context }
     }
 
-    fn render_tex(&self, tex: &str) -> Result<String, String> {
+    fn render_tex(&mut self, tex: &str) -> Result<String, String> {
         let result = self
             .runtime
-            .call_function("__entry_renderTeX", [tex.to_string()])
+            .global_object()
+            .get(
+                boa_engine::property::PropertyKey::String("__entry_renderTeX".into()),
+                &mut self.runtime,
+            )
+            .expect("Failed to get render function")
+            .as_object()
+            .expect("Render function is not an object")
+            .call(
+                &boa_engine::JsValue::null(),
+                &[boa_engine::JsValue::new(
+                    boa_engine::JsString::from_str(tex).map_err(|e| {
+                        format!("Failed to convert TeX to JavaScript string: {}", e)
+                    })?,
+                )],
+                &mut self.runtime,
+            )
             .map_err(|e| format!("Failed to call render function: {}", e))?;
         result
-            .to_string()
-            .map_err(|e| format!("Failed to convert result to string: {}", e))
+            .to_string(&mut self.runtime)
+            .map_err(|e| format!("Failed to convert result to string: {}", e))?
+            .to_std_string()
+            .map_err(|e| format!("Failed to convert result to Rust string: {}", e))
     }
 }
 
 /// Renders TeX to SVG.
 pub fn render_tex(tex: &str) -> Result<String, String> {
     thread_local! {
-        static RUNTIME: std::cell::RefCell<Runtime> = std::cell::RefCell::new(Runtime::new());
+        static RUNTIME: std::sync::Mutex<Runtime> = std::sync::Mutex::new(Runtime::new());
     }
-    RUNTIME.with(|runtime| runtime.borrow().render_tex(tex))
+    RUNTIME.with(|runtime| {
+        let mut runtime = runtime.lock().unwrap();
+        runtime.render_tex(tex)
+    })
 }
 
 /// Information about the license used by this crate.

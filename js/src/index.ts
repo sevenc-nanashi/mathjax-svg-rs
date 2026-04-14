@@ -10,6 +10,34 @@ import "@mathjax/src/js/input/tex/ams/AmsConfiguration.js";
 import "@mathjax/src/js/input/tex/newcommand/NewcommandConfiguration.js";
 import "@mathjax/src/js/input/tex/noundefined/NoUndefinedConfiguration.js";
 
+/** 0: "trace", 1: "debug", 2: "info", 3: "warn", 4: "error" */
+declare function __host_log(level: 0 | 1 | 2 | 3 | 4, message: string): void;
+
+function log(level: 0 | 1 | 2 | 3 | 4, ...args: any[]) {
+  const message = args
+    .map((arg) => {
+      if (typeof arg === "string") {
+        return arg;
+      } else {
+        try {
+          return JSON.stringify(arg);
+        } catch (e) {
+          return String(arg);
+        }
+      }
+    })
+    .join(" ");
+  __host_log(level, message);
+}
+// @ts-expect-error I want to bring my own console implementation
+globalThis.console = {
+  trace: (...args: any[]) => log(0, ...args),
+  debug: (...args: any[]) => log(1, ...args),
+  info: (...args: any[]) => log(2, ...args),
+  warn: (...args: any[]) => log(3, ...args),
+  error: (...args: any[]) => log(4, ...args),
+};
+
 const adaptor = liteAdaptor();
 RegisterHTMLHandler(adaptor);
 

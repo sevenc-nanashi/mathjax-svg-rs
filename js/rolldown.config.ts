@@ -3,9 +3,9 @@ import license from "rollup-plugin-license";
 
 export default defineConfig({
   input: "./src/index.ts",
-  output: {
-    minify: true,
-  },
+  // output: {
+  //   minify: true,
+  // },
   resolve: {
     alias: {
       punycode: "punycode/punycode.js",

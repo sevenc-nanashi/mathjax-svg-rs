@@ -8,9 +8,9 @@ description = "Very thin wrapper around MathJax to render TeX to SVG, using Quic
 include = ["src/**/*", "Cargo.toml", "README.md", "js/dist/*"]
 
 [dependencies]
+boa_engine = "0.21.1"
 include-zstd = "0.1.0"
 log = "0.4.29"
-quickjs-rusty = "0.11.1"
 serde_json = "1.0.149"
 
 [dev-dependencies]

@@ -1,4 +1,4 @@
-import "./buffer.ts"
+import "./buffer.ts";
 import { mathjax } from "@mathjax/src/js/mathjax.js";
 import { TeX } from "@mathjax/src/js/input/tex.js";
 import { liteAdaptor } from "@mathjax/src/js/adaptors/liteAdaptor.js";
@@ -54,7 +54,7 @@ const mathJax = mathjax.document("", {
   OutputJax: svg,
 });
 
-function renderTeX(math: string, fontSize: number): string {
+function renderTeX(math: string, fontSize: number, align: 0 | 1 | 2): string {
   if (
     typeof fontSize !== "number" ||
     !Number.isFinite(fontSize) ||
@@ -63,9 +63,11 @@ function renderTeX(math: string, fontSize: number): string {
     throw new Error(`Font size must be positive and finite: ${fontSize}`);
   }
 
+  svg.options.displayAlign = align === 0 ? "left" : align === 1 ? "center" : "right";
   const mathItem: LiteElement = mathJax.convert(math, {
     display: true,
     em: fontSize,
+    ex: fontSize / 2,
   });
   const item = adaptor.innerHTML(mathItem);
   if (item.includes('data-mml-node="merror"')) {

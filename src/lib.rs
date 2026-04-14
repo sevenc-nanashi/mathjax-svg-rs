@@ -14,6 +14,30 @@ use std::str::FromStr;
 use std::sync::{OnceLock, mpsc};
 use std::thread;
 
+#[derive(Debug, Clone)]
+pub struct Options {
+    /// Font size in pixels. Must be positive and finite.
+    pub font_size: f64,
+    /// Alignment of the rendered TeX.
+    pub horizontal_align: HorizontalAlign,
+}
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            font_size: DEFAULT_FONT_SIZE,
+            horizontal_align: HorizontalAlign::Center,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum HorizontalAlign {
+    Left,
+    #[default]
+    Center,
+    Right,
+}
+
 struct Runtime {
     runtime: boa_engine::Context,
 }
@@ -69,7 +93,7 @@ impl Runtime {
         Self { runtime: context }
     }
 
-    fn render_tex(&mut self, tex: &str, font_size: f64) -> Result<String, String> {
+    fn render_tex(&mut self, tex: &str, options: &Options) -> Result<String, String> {
         let result = self
             .runtime
             .global_object()
@@ -86,14 +110,19 @@ impl Runtime {
                     boa_engine::JsValue::new(boa_engine::JsString::from_str(tex).map_err(|e| {
                         format!("Failed to convert TeX to JavaScript string: {}", e)
                     })?),
-                    boa_engine::JsValue::new(font_size),
+                    boa_engine::JsValue::new(options.font_size),
+                    boa_engine::JsValue::new(match options.horizontal_align {
+                        HorizontalAlign::Left => 0,
+                        HorizontalAlign::Center => 1,
+                        HorizontalAlign::Right => 2,
+                    }),
                 ],
                 &mut self.runtime,
             )
             .map_err(|e| {
                 format!(
                     "Failed to call render function: {}",
-                    e.to_opaque(&mut self.runtime).display().to_string()
+                    e.to_opaque(&mut self.runtime).display()
                 )
             })?;
         result
@@ -107,7 +136,7 @@ impl Runtime {
 enum WorkerMessage {
     Render {
         tex: String,
-        font_size: f64,
+        options: Options,
         response: mpsc::SyncSender<Result<String, String>>,
     },
     Shutdown,
@@ -132,10 +161,10 @@ impl MathJax {
                     match message {
                         WorkerMessage::Render {
                             tex,
-                            font_size,
+                            options,
                             response,
                         } => {
-                            let _ = response.send(runtime.render_tex(&tex, font_size));
+                            let _ = response.send(runtime.render_tex(&tex, &options));
                         }
                         WorkerMessage::Shutdown => break,
                     }
@@ -150,19 +179,14 @@ impl MathJax {
     }
 
     /// Renders TeX to SVG.
-    pub fn render_tex(&self, tex: &str) -> Result<String, String> {
-        self.render_tex_with_font_size(tex, DEFAULT_FONT_SIZE)
-    }
-
-    /// Renders TeX to SVG with a font size in pixels.
-    pub fn render_tex_with_font_size(&self, tex: &str, font_size: f64) -> Result<String, String> {
-        validate_font_size(font_size)?;
+    pub fn render_tex(&self, tex: &str, options: &Options) -> Result<String, String> {
+        validate_font_size(options.font_size)?;
 
         let (response, result) = mpsc::sync_channel(1);
         self.sender
             .send(WorkerMessage::Render {
                 tex: tex.to_owned(),
-                font_size,
+                options: options.clone(),
                 response,
             })
             .map_err(|_| "MathJax worker thread is unavailable".to_string())?;
@@ -207,13 +231,8 @@ fn shared_mathjax() -> &'static MathJax {
 }
 
 /// Renders TeX to SVG.
-pub fn render_tex(tex: &str) -> Result<String, String> {
-    shared_mathjax().render_tex(tex)
-}
-
-/// Renders TeX to SVG with a font size in pixels.
-pub fn render_tex_with_font_size(tex: &str, font_size: f64) -> Result<String, String> {
-    shared_mathjax().render_tex_with_font_size(tex, font_size)
+pub fn render_tex(tex: &str, options: &Options) -> Result<String, String> {
+    shared_mathjax().render_tex(tex, options)
 }
 
 /// Information about the license used by this crate.
@@ -226,24 +245,21 @@ mod tests {
     #[test]
     fn test_render_tex() {
         let tex = r"\frac{a}{b}";
-        let svg = render_tex(tex).expect("Failed to render TeX");
+        let svg = render_tex(tex, &Options::default()).expect("Failed to render TeX");
         assert!(svg.contains("<svg"));
         assert!(svg.contains("</svg>"));
-    }
-
-    #[test]
-    fn test_render_tex_with_font_size() {
-        let tex = r"\frac{a}{b}";
-        let default_svg = render_tex(tex).expect("Failed to render TeX");
-        let svg = render_tex_with_font_size(tex, 32.0).expect("Failed to render TeX");
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("</svg>"));
-        assert_ne!(default_svg, svg);
     }
 
     #[test]
     fn test_render_tex_with_invalid_font_size() {
-        let error = render_tex_with_font_size(r"x", 0.0).expect_err("Expected an error");
+        let error = render_tex(
+            r"\frac{a}{b}",
+            &Options {
+                font_size: -1.0,
+                ..Default::default()
+            },
+        )
+        .expect_err("Expected error for negative font size");
         assert!(error.contains("Font size must be positive and finite"));
     }
 
@@ -251,7 +267,7 @@ mod tests {
     fn test_mathjax_render_tex() {
         let mathjax = MathJax::new();
         let svg = mathjax
-            .render_tex(r"\sqrt{x}")
+            .render_tex(r"\sqrt{x}", &Options::default())
             .expect("Failed to render TeX");
         assert!(svg.contains("<svg"));
         assert!(svg.contains("</svg>"));
@@ -265,7 +281,7 @@ mod tests {
                 let mathjax = mathjax.clone();
                 std::thread::spawn(move || {
                     mathjax
-                        .render_tex(&format!("x_{}", index))
+                        .render_tex(&format!(r"\frac{{x}}{{{}}}", index), &Options::default())
                         .expect("Failed to render TeX")
                 })
             })

@@ -1,6 +1,5 @@
 fn main() {
-    unsafe { std::env::set_var("RUST_LOG", "info") };
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     if std::env::args().len() < 4 {
         eprintln!("Usage: render_arg <TeX string> <png output file> <font size>");
@@ -8,14 +7,15 @@ fn main() {
     }
     log::info!("Rendering TeX: {}", std::env::args().nth(1).unwrap());
     let tex = std::env::args().nth(1).unwrap();
+    let runtime = mathjax_svg_rs::MathJax::new();
     let font_size = std::env::args()
         .nth(3)
         .expect("Font size is required")
         .parse::<f64>()
         .expect("Failed to parse font size as a number");
-    log::info!("Initialized MathJax");
-    let svg =
-        mathjax_svg_rs::render_tex_with_font_size(&tex, font_size).expect("Failed to render TeX");
+    let svg = runtime
+        .render_tex_with_font_size(&tex, font_size)
+        .expect("Failed to render TeX");
     log::info!("Rendered SVG: {}", svg);
 
     let tree = resvg::usvg::Tree::from_str(
@@ -37,8 +37,7 @@ fn main() {
     )
     .expect("Failed to create canvas");
     resvg::render(
-        &resvg::usvg::Tree::from_str(&svg, &resvg::usvg::Options::default())
-            .expect("Failed to parse SVG"),
+        &tree,
         resvg::tiny_skia::Transform::identity(),
         &mut canvas.as_mut(),
     );

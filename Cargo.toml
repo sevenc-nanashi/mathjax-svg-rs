@@ -5,7 +5,13 @@ edition = "2024"
 repository = "https://github.com/sevenc-nanashi/mathjax-svg-rs"
 license = "MIT"
 description = "Very thin wrapper around MathJax to render TeX to SVG, using QuickJS-ng as the JavaScript engine."
-include = ["src/**/*", "Cargo.toml", "README.md", "js/dist/*"]
+include = [
+  "src/**/*",
+  "Cargo.toml",
+  "./README.md",
+  "js/dist/*",
+  "!js/node_modules",
+]
 
 [dependencies]
 boa_engine = "0.21.1"

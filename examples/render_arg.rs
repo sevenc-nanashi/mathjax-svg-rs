@@ -2,7 +2,7 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     if std::env::args().len() < 4 {
-        eprintln!("Usage: render_arg <TeX string> <png output file> <font size>");
+        eprintln!("Usage: render_arg <TeX string> <png or svg output file> <font size>");
         std::process::exit(1);
     }
     log::info!("Rendering TeX: {}", std::env::args().nth(1).unwrap());
@@ -18,6 +18,12 @@ fn main() {
         .expect("Failed to render TeX");
     log::info!("Rendered SVG: {}", svg);
 
+    let output_file = std::env::args().nth(2).unwrap();
+    if output_file.ends_with(".svg") {
+        log::info!("Saving SVG to: {}", output_file);
+        std::fs::write(output_file, svg).expect("Failed to save SVG");
+        return;
+    }
     let tree = resvg::usvg::Tree::from_str(
         &svg,
         &resvg::usvg::Options {
@@ -42,7 +48,6 @@ fn main() {
         &mut canvas.as_mut(),
     );
 
-    let output_file = std::env::args().nth(2).unwrap();
     log::info!("Saving PNG to: {}", output_file);
     canvas.save_png(output_file).expect("Failed to save PNG");
 }

@@ -148,3 +148,4 @@ dist
 
 /target
 *.png
+*.svg

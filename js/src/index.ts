@@ -1,9 +1,11 @@
+import "./buffer.ts"
 import { mathjax } from "@mathjax/src/js/mathjax.js";
 import { TeX } from "@mathjax/src/js/input/tex.js";
 import { liteAdaptor } from "@mathjax/src/js/adaptors/liteAdaptor.js";
 import { RegisterHTMLHandler } from "@mathjax/src/js/handlers/html.js";
 import { SVG } from "@mathjax/src/js/output/svg.js";
 import { LiteElement } from "@mathjax/src/js/adaptors/lite/Element.js";
+import { DOMParser } from "linkedom";
 
 import "@mathjax/src/js/input/tex/base/BaseConfiguration.js";
 import "@mathjax/src/js/input/tex/ams/AmsConfiguration.js";
@@ -53,7 +55,11 @@ const mathJax = mathjax.document("", {
 });
 
 function renderTeX(math: string, fontSize: number): string {
-  if (typeof fontSize !== "number" || !Number.isFinite(fontSize) || fontSize <= 0) {
+  if (
+    typeof fontSize !== "number" ||
+    !Number.isFinite(fontSize) ||
+    fontSize <= 0
+  ) {
     throw new Error(`Font size must be positive and finite: ${fontSize}`);
   }
 
@@ -61,7 +67,17 @@ function renderTeX(math: string, fontSize: number): string {
     display: true,
     em: fontSize,
   });
-  return adaptor.innerHTML(mathItem);
+  const item = adaptor.innerHTML(mathItem);
+  if (item.includes('data-mml-node="merror"')) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(item, "text/html");
+    const error = doc.querySelector("g[data-mml-node='merror']");
+    if (error) {
+      const message = error.getAttribute("data-mjx-error") || "Unknown error";
+      throw new Error(`MathJax error: ${message}`);
+    }
+  }
+  return item;
 }
 
 globalThis.__entry_renderTeX = renderTeX;

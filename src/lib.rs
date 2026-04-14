@@ -28,6 +28,7 @@ impl Runtime {
             .eval(boa_engine::Source::from_bytes(include_zstd::file_str!(
                 "../js/dist/index.js"
             )))
+            .map_err(|e| e.to_opaque(&mut context).display().to_string())
             .expect("Failed to evaluate MathJax script");
         let log = boa_engine::object::FunctionObjectBuilder::new(
             context.realm(),
@@ -89,7 +90,12 @@ impl Runtime {
                 ],
                 &mut self.runtime,
             )
-            .map_err(|e| format!("Failed to call render function: {}", e))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to call render function: {}",
+                    e.to_opaque(&mut self.runtime).display().to_string()
+                )
+            })?;
         result
             .to_string(&mut self.runtime)
             .map_err(|e| format!("Failed to convert result to string: {}", e))?

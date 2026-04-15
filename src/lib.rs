@@ -1,6 +1,6 @@
 //! # mathjax-svg-rs
 //!
-//! Very thin wrapper around MathJax to render TeX to SVG, using QuickJS-ng as the JavaScript
+//! Very thin wrapper around MathJax to render TeX to SVG, using Boajs as the JavaScript
 //! engine.
 //!
 //! # Notes

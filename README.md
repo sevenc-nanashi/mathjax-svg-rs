@@ -1,15 +1,19 @@
 # mathjax-svg-rs
 
-Very thin wrapper around MathJax to render TeX to SVG, using QuickJS-ng as the JavaScript engine.
+Very thin wrapper around MathJax to render TeX to SVG, using Boajs as the JavaScript engine.
 
 ## Usage
 
 ```rust
-let svg = mathjax_svg_rs::render_tex(&tex).expect("Failed to render TeX");
-```
-
-```rust
-let svg = mathjax_svg_rs::render_tex_with_font_size(&tex, 32.0).expect("Failed to render TeX");
+let runtime = mathjax_svg_rs::MathJax::new();
+let options = Options {
+    font_size: args.font_size,
+    horizontal_align: args.align.into(),
+};
+let svg = runtime
+    .render_tex(&args.tex, &options)
+    .expect("Failed to render TeX");
+log::info!("Rendered SVG: {}", svg);
 ```
 
 ## License

@@ -6,19 +6,23 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "rolldown -c rolldown.config.ts"
+    "build": "vite build"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.33.0",
   "devDependencies": {
+    "@mathjax/mathjax-newcm-font": "^4.1.1",
     "@mathjax/src": "^4.1.1",
     "@types/mathjax-node": "^2.1.0",
     "@types/node": "^24.12.2",
     "mathjax-node": "^2.1.1",
     "rolldown": "1.0.0-rc.15",
-    "rollup-plugin-license": "^3.7.1"
+    "rollup-plugin-license": "^3.7.1",
+    "terser": "^5.46.1",
+    "vite": "^8.0.8",
+    "vite-plugin-node-polyfills": "^0.26.0"
   },
   "dependencies": {
     "buffer": "^6.0.3",

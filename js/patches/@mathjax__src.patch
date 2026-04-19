@@ -1,0 +1,53 @@
+diff --git a/mjs/core/MathDocument.js b/mjs/core/MathDocument.js
+index 3081efd7e9412d56828226a829f58075fc0c3c9e..6f52a69be8e192019657b41fe956de42758ec90f 100644
+--- a/mjs/core/MathDocument.js
++++ b/mjs/core/MathDocument.js
+@@ -187,11 +187,12 @@ export class AbstractMathDocument {
+         return this;
+     }
+     renderPromise() {
++        const this_ = this;
+         return this.whenReady(() => handleRetriesFor(() => __awaiter(this, void 0, void 0, function* () {
+-            this.render();
+-            yield this.actionPromises();
+-            this.clearPromises();
+-            return this;
++            this_.render();
++            yield this_.actionPromises();
++            this_.clearPromises();
++            return this_;
+         })));
+     }
+     rerender(start = STATE.RERENDER) {
+@@ -200,11 +201,12 @@ export class AbstractMathDocument {
+         return this;
+     }
+     rerenderPromise(start = STATE.RERENDER) {
++        const this_ = this;
+         return this.whenReady(() => handleRetriesFor(() => __awaiter(this, void 0, void 0, function* () {
+-            this.rerender(start);
+-            yield this.actionPromises();
+-            this.clearPromises();
+-            return this;
++            this_.rerender(start);
++            yield this_.actionPromises();
++            this_.clearPromises();
++            return this_;
+         })));
+     }
+     convert(math, options = {}) {
+@@ -236,10 +238,11 @@ export class AbstractMathDocument {
+         return mitem.typesetRoot || mitem.root;
+     }
+     convertPromise(math, options = {}) {
++        const this_ = this;
+         return this.whenReady(() => handleRetriesFor(() => __awaiter(this, void 0, void 0, function* () {
+-            const node = this.convert(math, options);
+-            yield this.actionPromises();
+-            this.clearPromises();
++            const node = this_.convert(math, options);
++            yield this_.actionPromises();
++            this_.clearPromises();
+             return node;
+         })));
+     }

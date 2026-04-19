@@ -10,6 +10,7 @@
 //! - The `render_tex` renders through a shared worker thread. Create a [`MathJax`] instance if you
 //!   want to own a separate worker thread.
 
+mod job_queue;
 use std::str::FromStr;
 use std::sync::{OnceLock, mpsc};
 use std::thread;
@@ -38,22 +39,62 @@ pub enum HorizontalAlign {
     Right,
 }
 
-struct Runtime {
+/// Internal JavaScript runtime for rendering TeX to SVG using MathJax.
+///
+/// <div class="warning">
+///
+/// This is not [std::sync::Send]able. In most case, you should use the shared worker thread through
+/// the [`render_tex`] function or create a [`MathJax`] instance instead of using this directly.
+///
+/// </div>
+pub struct Runtime {
     runtime: boa_engine::Context,
+}
+
+// TODO: replace with zip archive to reduce the size of the built binary
+static JS_DIST: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/js/dist");
+
+struct DistLoader;
+impl boa_engine::module::ModuleLoader for DistLoader {
+    async fn load_imported_module(
+        self: std::rc::Rc<Self>,
+        _referrer: boa_engine::module::Referrer,
+        specifier: boa_engine::JsString,
+        context: &std::cell::RefCell<&mut boa_engine::Context>,
+    ) -> boa_engine::JsResult<boa_engine::Module> {
+        let path = specifier.to_std_string().map_err(|e| {
+            boa_engine::JsNativeError::error().with_message(format!(
+                "Failed to convert module specifier to Rust string: {}",
+                e
+            ))
+        })?;
+        if path.starts_with("./") {
+            let file = JS_DIST
+                .get_file(path.strip_prefix("./").unwrap())
+                .ok_or_else(|| {
+                    boa_engine::JsNativeError::error().with_message(format!(
+                        "Failed to find module '{}' in embedded JavaScript code",
+                        path
+                    ))
+                })?;
+            let source = boa_engine::Source::from_bytes(file.contents());
+            boa_engine::module::Module::parse(source, None, *context.borrow_mut())
+        } else {
+            Err(boa_engine::JsNativeError::error()
+                .with_message(format!("Unsupported module specifier: '{}'", path))
+                .into())
+        }
+    }
 }
 
 impl Runtime {
     fn new() -> Self {
         let mut context = boa_engine::Context::builder()
+            .job_executor(std::rc::Rc::new(job_queue::Queue::new()))
+            .module_loader(std::rc::Rc::new(DistLoader))
             .build()
             .expect("Failed to create JavaScript context");
         let current = std::time::Instant::now();
-        context
-            .eval(boa_engine::Source::from_bytes(include_zstd::file_str!(
-                "../js/dist/index.js"
-            )))
-            .map_err(|e| e.to_opaque(&mut context).display().to_string())
-            .expect("Failed to evaluate MathJax script");
         let log = boa_engine::object::FunctionObjectBuilder::new(
             context.realm(),
             boa_engine::NativeFunction::from_fn_ptr(|_this, args, ctx| {
@@ -86,6 +127,58 @@ impl Runtime {
                 &mut context,
             )
             .expect("Failed to set log function");
+        context
+            .eval(boa_engine::Source::from_bytes(
+                br#"globalThis.__dirname = "/dummy/dirname"; "#,
+            ))
+            .expect("Failed to load host_log JavaScript code");
+        // context
+        //     .global_object()
+        //     .set(
+        //         boa_engine::property::PropertyKey::String("__dirname".into()),
+        //         boa_engine::js_string!("/"),
+        //         false,
+        //         &mut context,
+        //     )
+        //     .expect("Failed to set __dirname");
+        context
+            .eval(boa_engine::Source::from_bytes(
+                JS_DIST
+                    .get_file("index.js")
+                    .expect("Failed to find MathJax JavaScript code")
+                    .contents(),
+            ))
+            .map_err(|e| e.to_opaque(&mut context).display().to_string())
+            .expect("Failed to load MathJax JavaScript code");
+        let init = context
+            .global_object()
+            .get(
+                boa_engine::property::PropertyKey::String("__entry_init".into()),
+                &mut context,
+            )
+            .expect("Failed to get initialization function")
+            .as_object()
+            .expect("Initialization function is not an object")
+            .call(&boa_engine::JsValue::null(), &[], &mut context)
+            .map_err(|e| {
+                format!(
+                    "Failed to call initialization function: {}",
+                    e.to_opaque(&mut context).display()
+                )
+            })
+            .expect("Failed to initialize MathJax JavaScript context");
+        let Some(promise) = init.as_promise() else {
+            unreachable!("Initialization function did not return a promise")
+        };
+        promise
+            .await_blocking(&mut context)
+            .map_err(|e| {
+                format!(
+                    "Failed to await initialization promise: {}",
+                    e.to_opaque(&mut context).display()
+                )
+            })
+            .expect("Failed to initialize MathJax JavaScript context");
         log::debug!(
             "MathJax JavaScript context initialized in {} ms",
             current.elapsed().as_millis()
@@ -125,11 +218,39 @@ impl Runtime {
                     e.to_opaque(&mut self.runtime).display()
                 )
             })?;
+        let result = if let Some(promise) = result.as_promise() {
+            promise
+                .await_blocking(&mut self.runtime)
+                .map_err(|e| format!("Failed to await render promise: {}", self.format_error(e)))?
+        } else {
+            result
+        };
         result
             .to_string(&mut self.runtime)
             .map_err(|e| format!("Failed to convert result to string: {}", e))?
             .to_std_string()
             .map_err(|e| format!("Failed to convert result to Rust string: {}", e))
+    }
+
+    fn format_error(&mut self, error: boa_engine::JsError) -> String {
+        let value = error.to_opaque(&mut self.runtime);
+        let display = value.display().to_string();
+        let stack = value
+            .as_object()
+            .and_then(|object| {
+                object
+                    .get(
+                        boa_engine::property::PropertyKey::String("stack".into()),
+                        &mut self.runtime,
+                    )
+                    .ok()
+            })
+            .and_then(|stack| stack.to_string(&mut self.runtime).ok())
+            .and_then(|stack| stack.to_std_string().ok());
+        match stack {
+            Some(stack) => format!("{display}\n@{stack}"),
+            None => display,
+        }
     }
 }
 

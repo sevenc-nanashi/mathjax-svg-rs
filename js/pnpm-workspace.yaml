@@ -1,0 +1,2 @@
+patchedDependencies:
+  '@mathjax/src': patches/@mathjax__src.patch
